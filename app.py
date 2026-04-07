@@ -77,14 +77,12 @@ if menu == "Veri Girişi":
             tarih = st.date_input("Tarih")
             hafta = f"{tarih.isocalendar().week}. Hafta"
             st.text_input("Hafta", value=hafta, disabled=True)
-
             st.text_input("Tesis Adı", value="İzmir", disabled=True)
             tesis = "İzmir"
 
         with col2:
             st.text_input("Bant No", value="Kesimhane", disabled=True)
             bant = "Kesimhane"
-
             musteri = st.selectbox("Müşteri", musteri_list)
             pastal_no = st.text_input("Pastal No")
 
@@ -173,14 +171,19 @@ if menu == "Kayıtlar":
         st.warning("Veri yok")
     else:
         secilen_id = st.selectbox("Kayıt Seç", df["id"])
-
         kayit = df[df["id"] == secilen_id].iloc[0]
 
         with st.form("edit"):
-            musteri = st.selectbox("Müşteri", musteri_list, index=musteri_list.index(kayit["musteri"]))
+
+            musteri_index = musteri_list.index(kayit["musteri"]) if kayit["musteri"] in musteri_list else 0
+            musteri = st.selectbox("Müşteri", musteri_list, index=musteri_index)
+
             hata_adi = st.text_input("Hata Adı", kayit["hata_adi"])
             hata_kg = st.number_input("Hata KG", value=float(kayit["hata_kg"]))
-            durum = st.selectbox("Durum", durum_list, index=durum_list.index(kayit["durum"]))
+
+            durum_index = durum_list.index(kayit["durum"]) if kayit["durum"] in durum_list else 0
+            durum = st.selectbox("Durum", durum_list, index=durum_index)
+
             aksiyon = st.text_area("Aksiyon", kayit["aksiyon"])
 
             guncelle = st.form_submit_button("Güncelle")
@@ -219,8 +222,6 @@ if menu == "Excel Yükle":
 
     if uploaded_file:
         df_excel = pd.read_excel(uploaded_file)
-
-        st.write("Yüklenen veri:")
         st.dataframe(df_excel)
 
         if st.button("🚀 Veritabanına Aktar"):
