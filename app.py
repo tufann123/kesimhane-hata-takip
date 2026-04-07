@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import io
+import plotly.express as px
 
 st.set_page_config(page_title="Kesimhane Hata Takip", layout="wide")
 
@@ -132,17 +133,11 @@ if menu == "Dashboard":
     else:
         df["tarih"] = pd.to_datetime(df["tarih"])
 
-        # ----------- FILTER PANEL -----------
+        # FILTER
         st.sidebar.subheader("🔍 Filtreler")
-
-        min_date = df["tarih"].min()
-        max_date = df["tarih"].max()
-
-        start_date = st.sidebar.date_input("Başlangıç", min_date)
-        end_date = st.sidebar.date_input("Bitiş", max_date)
-
+        start_date = st.sidebar.date_input("Başlangıç", df["tarih"].min())
+        end_date = st.sidebar.date_input("Bitiş", df["tarih"].max())
         secili_musteri = st.sidebar.multiselect("Müşteri", df["musteri"].unique())
-        secili_birim = st.sidebar.multiselect("Birim", df["birim"].unique())
 
         df = df[(df["tarih"] >= pd.to_datetime(start_date)) &
                 (df["tarih"] <= pd.to_datetime(end_date))]
@@ -150,10 +145,7 @@ if menu == "Dashboard":
         if secili_musteri:
             df = df[df["musteri"].isin(secili_musteri)]
 
-        if secili_birim:
-            df = df[df["birim"].isin(secili_birim)]
-
-        # ----------- KPI -----------
+        # KPI
         toplam_hata = df["hata_kg"].sum()
         toplam_uretim = df["cikan_kg"].sum()
         hata_oran = toplam_hata / toplam_uretim if toplam_uretim > 0 else 0
@@ -165,60 +157,89 @@ if menu == "Dashboard":
         col4.metric("Açık Aksiyon", len(df[df["durum"] != "Tamamlandı"]))
 
         if hata_oran > 0.05:
-            st.error("🚨 Kritik Seviye")
+            st.error("🚨 Kritik")
         elif hata_oran > 0.03:
-            st.warning("⚠️ Orta Seviye")
+            st.warning("⚠️ Orta")
         else:
-            st.success("✅ İyi Seviye")
+            st.success("✅ İyi")
 
         st.divider()
 
-        # ----------- GRID -----------
+        # ----------- PLOTLY GRAFİKLER -----------
+
+        def plot_bar(data, x, y, title):
+            data = data.groupby(x)[y].sum().reset_index()
+            data["%"] = data[y] / data[y].sum() * 100
+
+            fig = px.bar(
+                data,
+                x=x,
+                y=y,
+                text=data["%"].apply(lambda v: f"%{v:.1f}"),
+                title=title
+            )
+            fig.update_traces(textposition='outside')
+            return fig
+
         colA, colB = st.columns(2)
 
         with colA:
-            st.subheader("📊 Müşteri")
-            st.bar_chart(df.groupby("musteri")["hata_kg"].sum())
-
-            st.subheader("📊 Hata Kaynağı")
-            st.bar_chart(df.groupby("hata_kaynagi")["hata_kg"].sum())
+            st.plotly_chart(plot_bar(df, "musteri", "hata_kg", "Müşteri"))
+            st.plotly_chart(plot_bar(df, "hata_kaynagi", "hata_kg", "Hata Kaynağı"))
 
         with colB:
-            st.subheader("📊 Ana Neden")
-            st.bar_chart(df.groupby("ana_neden")["hata_kg"].sum())
-
-            st.subheader("📊 Birim")
-            st.bar_chart(df.groupby("birim")["hata_kg"].sum())
+            st.plotly_chart(plot_bar(df, "ana_neden", "hata_kg", "Ana Neden"))
+            st.plotly_chart(plot_bar(df, "birim", "hata_kg", "Birim"))
 
         st.divider()
 
-        # ----------- TREND -----------
-        st.subheader("📈 Günlük Hata Oranı")
+        # TREND
         df["hata_oran"] = df["hata_kg"] / df["cikan_kg"]
         st.line_chart(df.groupby("tarih")["hata_oran"].mean())
 
-        # ----------- EN KÖTÜ -----------
-        st.subheader("⚠️ Kritik Nokta")
-        en_kotu = df.groupby("musteri")["hata_kg"].sum().idxmax()
-        st.error(f"En problemli müşteri: {en_kotu}")
-
-        # ----------- TABLE -----------
-        st.subheader("📋 Detay Veri")
-        st.dataframe(df, use_container_width=True)
+        # EN KÖTÜ
+        st.error(f"En kötü müşteri: {df.groupby('musteri')['hata_kg'].sum().idxmax()}")
 
 # ---------------- KAYITLAR ----------------
 if menu == "Kayıtlar":
-    st.title("📋 Kayıtlar")
-    st.dataframe(df, use_container_width=True)
+    st.title("📋 Kayıt Yönetimi")
 
+    if df.empty:
+        st.warning("Veri yok")
+    else:
+        secilen_id = st.selectbox("Kayıt Seç", df["id"])
+
+        kayit = df[df["id"] == secilen_id].iloc[0]
+
+        with st.form("edit"):
+            musteri = st.selectbox("Müşteri", musteri_list, index=musteri_list.index(kayit["musteri"]))
+            hata_adi = st.text_input("Hata Adı", kayit["hata_adi"])
+            hata_kg = st.number_input("Hata KG", value=float(kayit["hata_kg"]))
+            durum = st.selectbox("Durum", durum_list, index=durum_list.index(kayit["durum"]))
+            aksiyon = st.text_area("Aksiyon", kayit["aksiyon"])
+
+            guncelle = st.form_submit_button("Güncelle")
+
+            if guncelle:
+                c.execute("""
+                UPDATE kayitlar
+                SET musteri=?, hata_adi=?, hata_kg=?, durum=?, aksiyon=?
+                WHERE id=?
+                """, (musteri, hata_adi, hata_kg, durum, aksiyon, secilen_id))
+
+                conn.commit()
+                st.success("✅ Güncellendi")
+
+        if st.button("🗑️ Sil"):
+            c.execute("DELETE FROM kayitlar WHERE id=?", (secilen_id,))
+            conn.commit()
+            st.warning("Silindi")
+
+    # Excel export
     def to_excel(df):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
         return output.getvalue()
 
-    st.download_button(
-        "📥 Excel indir",
-        data=to_excel(df),
-        file_name="hata_takip.xlsx"
-    )
+    st.download_button("📥 Excel indir", data=to_excel(df), file_name="hata.xlsx")
