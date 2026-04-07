@@ -64,7 +64,7 @@ birim_list = ["KG","MT"]
 durum_list = ["Açık","Devam Ediyor","Tamamlandı"]
 
 # ---------------- MENU ----------------
-menu = st.sidebar.radio("Menü", ["Veri Girişi", "Dashboard", "Kayıtlar", "Yedekleme"])
+menu = st.sidebar.radio("Menü", ["Veri Girişi", "Dashboard", "Kayıtlar", "Yedekleme", "Excel Yükle"])
 
 # ---------------- VERİ GİRİŞ ----------------
 if menu == "Veri Girişi":
@@ -128,9 +128,7 @@ if menu == "Veri Girişi":
                 durum, aksiyon
             ))
             conn.commit()
-
             create_backup()
-
             st.success("✅ Kayıt eklendi ve yedeklendi")
 
 # ---------------- DASHBOARD ----------------
@@ -212,6 +210,48 @@ if menu == "Kayıtlar":
         return output.getvalue()
 
     st.download_button("📥 Excel indir", data=to_excel(df), file_name="hata.xlsx")
+
+# ---------------- EXCEL YÜKLE ----------------
+if menu == "Excel Yükle":
+    st.title("📤 Excel'den Veri Yükle")
+
+    uploaded_file = st.file_uploader("Excel dosyası yükle", type=["xlsx"])
+
+    if uploaded_file:
+        df_excel = pd.read_excel(uploaded_file)
+
+        st.write("Yüklenen veri:")
+        st.dataframe(df_excel)
+
+        if st.button("🚀 Veritabanına Aktar"):
+            for _, row in df_excel.iterrows():
+                c.execute("""
+                INSERT INTO kayitlar VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    str(row.get("hafta","")),
+                    str(row.get("tarih","")),
+                    str(row.get("tesis","İzmir")),
+                    str(row.get("bant","Kesimhane")),
+                    str(row.get("musteri","")),
+                    str(row.get("pastal_no","")),
+                    str(row.get("model_no","")),
+                    str(row.get("kumas_kalite","")),
+                    str(row.get("hata_kaynagi","")),
+                    str(row.get("hata_adi","")),
+                    str(row.get("ana_neden","")),
+                    str(row.get("birim","KG")),
+                    float(row.get("pastal_ihtiyac",0)),
+                    int(row.get("cikan_top",0)),
+                    int(row.get("hatali_top",0)),
+                    float(row.get("cikan_kg",0)),
+                    float(row.get("hata_kg",0)),
+                    str(row.get("durum","Açık")),
+                    str(row.get("aksiyon",""))
+                ))
+
+            conn.commit()
+            create_backup()
+            st.success("✅ Tüm veriler başarıyla yüklendi!")
 
 # ---------------- YEDEKLEME ----------------
 if menu == "Yedekleme":
