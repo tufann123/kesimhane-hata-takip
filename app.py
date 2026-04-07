@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS kayitlar (
     hata_kaynagi TEXT,
     hata_adi TEXT,
     ana_neden TEXT,
+    birim TEXT,
     pastal_ihtiyac REAL,
     cikan_top INTEGER,
     hatali_top INTEGER,
@@ -33,7 +34,7 @@ CREATE TABLE IF NOT EXISTS kayitlar (
 """)
 conn.commit()
 
-# ---------------- DROPDOWN LİSTELER ----------------
+# ---------------- DROPDOWN ----------------
 musteri_list = [
     "Erlich", "Hugo Boss", "Tommy", "Ten Cate",
     "Blackspade", "Lisca", "Groenendijk",
@@ -46,6 +47,8 @@ ana_neden_list = [
     "Gramaj", "Leke", "En Problemi", "Kola Kenarı",
     "Kırık", "Abraj", "Renk Farkı"
 ]
+
+birim_list = ["KG", "MT"]
 
 # ---------------- MENU ----------------
 menu = st.sidebar.radio("Menü", ["Veri Girişi", "Dashboard", "Kayıtlar"])
@@ -60,14 +63,18 @@ if menu == "Veri Girişi":
         with col1:
             tarih = st.date_input("Tarih")
 
-            # 🔥 OTOMATİK HAFTA
             hafta = f"{tarih.isocalendar().week}. Hafta"
             st.text_input("Hafta", value=hafta, disabled=True)
 
-            tesis = st.text_input("Tesis Adı")
+            # 🔥 SABİT TESİS
+            st.text_input("Tesis Adı", value="İzmir", disabled=True)
+            tesis = "İzmir"
 
         with col2:
-            bant = st.text_input("Bant No")
+            # 🔥 SABİT BANT
+            st.text_input("Bant No", value="Kesimhane", disabled=True)
+            bant = "Kesimhane"
+
             musteri = st.selectbox("Müşteri", musteri_list)
             pastal_no = st.text_input("Pastal No")
 
@@ -79,6 +86,9 @@ if menu == "Veri Girişi":
         hata_adi = st.text_input("Hata Adı")
         ana_neden = st.selectbox("Ana Neden", ana_neden_list)
 
+        # 🔥 YENİ ALAN
+        birim = st.selectbox("Birim", birim_list)
+
         col4, col5, col6 = st.columns(3)
 
         with col4:
@@ -89,18 +99,19 @@ if menu == "Veri Girişi":
             hatali_top = st.number_input("Hatalı Top Sayısı", min_value=0)
 
         with col6:
-            cikan_kg = st.number_input("Çıkan Kumaş KG", min_value=0.0)
-            hata_kg = st.number_input("Hata KG", min_value=0.0)
+            cikan_kg = st.number_input("Çıkan Kumaş", min_value=0.0)
+            hata_kg = st.number_input("Hata", min_value=0.0)
 
         submit = st.form_submit_button("Kaydet")
 
         if submit:
             c.execute("""
-            INSERT INTO kayitlar VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO kayitlar VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 hafta, str(tarih), tesis, bant, musteri,
                 pastal_no, model_no, kumas_kalite,
                 hata_kaynagi, hata_adi, ana_neden,
+                birim,
                 pastal_ihtiyac, cikan_top, hatali_top,
                 cikan_kg, hata_kg
             ))
@@ -122,30 +133,25 @@ if menu == "Dashboard":
         col1, col2, col3 = st.columns(3)
 
         col1.metric("Toplam Kayıt", len(df))
-        col2.metric("Toplam Hata KG", int(df["hata_kg"].sum()))
-        col3.metric("Toplam Üretim KG", int(df["cikan_kg"].sum()))
+        col2.metric("Toplam Hata", int(df["hata_kg"].sum()))
+        col3.metric("Toplam Üretim", int(df["cikan_kg"].sum()))
 
         st.divider()
 
         # Hata oranı
         df["hata_oran"] = df["hata_kg"] / df["cikan_kg"]
 
-        st.subheader("📉 Hata Oranı Trend")
+        st.subheader("📉 Hata Oranı")
         trend = df.groupby("tarih")["hata_oran"].mean()
         st.line_chart(trend)
 
-        # Hata kaynağı
-        st.subheader("📊 Hata Kaynağı")
-        kaynak = df.groupby("hata_kaynagi")["hata_kg"].sum()
-        st.bar_chart(kaynak)
+        # Birim bazlı analiz
+        st.subheader("📊 Birim Bazlı Dağılım")
+        birim = df.groupby("birim")["hata_kg"].sum()
+        st.bar_chart(birim)
 
-        # Ana neden analizi
-        st.subheader("📊 Ana Neden Analizi")
-        neden = df.groupby("ana_neden")["hata_kg"].sum()
-        st.bar_chart(neden)
-
-        # Müşteri bazlı
-        st.subheader("👥 Müşteri Bazlı Hata")
+        # Müşteri
+        st.subheader("👥 Müşteri Analizi")
         musteri = df.groupby("musteri")["hata_kg"].sum()
         st.bar_chart(musteri)
 
