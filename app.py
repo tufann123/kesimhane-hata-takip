@@ -63,6 +63,7 @@ ana_neden_list = ["Gramaj","Leke","En Problemi","Kola Kenarı","Kırık","Abraj"
 birim_list = ["KG","MT"]
 durum_list = ["Açık","Devam Ediyor","Tamamlandı"]
 
+# ---------------- MENU ----------------
 menu = st.sidebar.radio("Menü", ["Veri Girişi", "Dashboard", "Kayıtlar", "Yedekleme"])
 
 # ---------------- VERİ GİRİŞ ----------------
@@ -70,19 +71,47 @@ if menu == "Veri Girişi":
     st.title("📝 Veri Girişi")
 
     with st.form("form"):
-        tarih = st.date_input("Tarih")
-        hafta = f"{tarih.isocalendar().week}. Hafta"
+        col1, col2, col3 = st.columns(3)
 
-        musteri = st.selectbox("Müşteri", musteri_list)
-        hata_kaynagi = st.selectbox("Hata Kaynağı", hata_kaynagi_list)
+        with col1:
+            tarih = st.date_input("Tarih")
+            hafta = f"{tarih.isocalendar().week}. Hafta"
+            st.text_input("Hafta", value=hafta, disabled=True)
+
+            st.text_input("Tesis Adı", value="İzmir", disabled=True)
+            tesis = "İzmir"
+
+        with col2:
+            st.text_input("Bant No", value="Kesimhane", disabled=True)
+            bant = "Kesimhane"
+
+            musteri = st.selectbox("Müşteri", musteri_list)
+            pastal_no = st.text_input("Pastal No")
+
+        with col3:
+            model_no = st.text_input("Model No")
+            kumas_kalite = st.text_input("Kumaş Kalite / Varyant")
+            hata_kaynagi = st.selectbox("Hata Kaynağı", hata_kaynagi_list)
+
+        hata_adi = st.text_input("Hata Adı")
         ana_neden = st.selectbox("Ana Neden", ana_neden_list)
         birim = st.selectbox("Birim", birim_list)
 
-        cikan_kg = st.number_input("Çıkan KG", min_value=0.0)
-        hata_kg = st.number_input("Hata KG", min_value=0.0)
+        col4, col5, col6 = st.columns(3)
+
+        with col4:
+            pastal_ihtiyac = st.number_input("Pastal İhtiyacı", min_value=0.0)
+
+        with col5:
+            cikan_top = st.number_input("Çıkan Top Sayısı", min_value=0)
+            hatali_top = st.number_input("Hatalı Top Sayısı", min_value=0)
+
+        with col6:
+            cikan_kg = st.number_input("Çıkan Kumaş KG", min_value=0.0)
+            hata_kg = st.number_input("Hata KG", min_value=0.0)
 
         durum = st.selectbox("Durum", durum_list)
-        aksiyon = st.text_area("Aksiyon")
+        aksiyon = st.text_area("Aksiyon / Alınan Önlem")
 
         submit = st.form_submit_button("Kaydet")
 
@@ -90,17 +119,16 @@ if menu == "Veri Girişi":
             c.execute("""
             INSERT INTO kayitlar VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
-                hafta, str(tarih), "İzmir", "Kesimhane", musteri,
-                "", "", "",
-                hata_kaynagi, "", ana_neden,
+                hafta, str(tarih), tesis, bant, musteri,
+                pastal_no, model_no, kumas_kalite,
+                hata_kaynagi, hata_adi, ana_neden,
                 birim,
-                0, 0, 0,
+                pastal_ihtiyac, cikan_top, hatali_top,
                 cikan_kg, hata_kg,
                 durum, aksiyon
             ))
             conn.commit()
 
-            # 🔥 OTOMATİK BACKUP
             create_backup()
 
             st.success("✅ Kayıt eklendi ve yedeklendi")
@@ -129,38 +157,75 @@ if menu == "Dashboard":
             fig.update_traces(textposition='outside')
             return fig
 
-        st.plotly_chart(plot(df, "musteri"))
-        st.plotly_chart(plot(df, "ana_neden"))
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.plotly_chart(plot(df, "musteri"))
+            st.plotly_chart(plot(df, "hata_kaynagi"))
+
+        with col2:
+            st.plotly_chart(plot(df, "ana_neden"))
+            st.plotly_chart(plot(df, "birim"))
 
 # ---------------- KAYITLAR ----------------
 if menu == "Kayıtlar":
-    st.title("📋 Kayıtlar")
-    st.dataframe(df, use_container_width=True)
+    st.title("📋 Kayıt Yönetimi")
+
+    if df.empty:
+        st.warning("Veri yok")
+    else:
+        secilen_id = st.selectbox("Kayıt Seç", df["id"])
+
+        kayit = df[df["id"] == secilen_id].iloc[0]
+
+        with st.form("edit"):
+            musteri = st.selectbox("Müşteri", musteri_list, index=musteri_list.index(kayit["musteri"]))
+            hata_adi = st.text_input("Hata Adı", kayit["hata_adi"])
+            hata_kg = st.number_input("Hata KG", value=float(kayit["hata_kg"]))
+            durum = st.selectbox("Durum", durum_list, index=durum_list.index(kayit["durum"]))
+            aksiyon = st.text_area("Aksiyon", kayit["aksiyon"])
+
+            guncelle = st.form_submit_button("Güncelle")
+
+            if guncelle:
+                c.execute("""
+                UPDATE kayitlar
+                SET musteri=?, hata_adi=?, hata_kg=?, durum=?, aksiyon=?
+                WHERE id=?
+                """, (musteri, hata_adi, hata_kg, durum, aksiyon, secilen_id))
+
+                conn.commit()
+                create_backup()
+                st.success("✅ Güncellendi")
+
+        if st.button("🗑️ Sil"):
+            c.execute("DELETE FROM kayitlar WHERE id=?", (secilen_id,))
+            conn.commit()
+            create_backup()
+            st.warning("Silindi")
+
+    # Excel export
+    def to_excel(df):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False)
+        return output.getvalue()
+
+    st.download_button("📥 Excel indir", data=to_excel(df), file_name="hata.xlsx")
 
 # ---------------- YEDEKLEME ----------------
 if menu == "Yedekleme":
     st.title("💾 Yedekleme")
 
-    # 📥 DB İNDİR
     with open(DB_FILE, "rb") as f:
-        st.download_button(
-            "📦 Veritabanını indir",
-            data=f,
-            file_name="kumas.db"
-        )
+        st.download_button("📦 Veritabanını indir", data=f, file_name="kumas.db")
 
-    # 📤 DB YÜKLE
     uploaded = st.file_uploader("📤 Yedek yükle", type=["db"])
 
     if uploaded:
         restore_backup(uploaded)
         st.success("✅ Yedek yüklendi, sayfayı yenile")
 
-    # 🔁 BACKUP İNDİR
     if os.path.exists(BACKUP_FILE):
         with open(BACKUP_FILE, "rb") as f:
-            st.download_button(
-                "🔁 Otomatik yedeği indir",
-                data=f,
-                file_name="kumas_backup.db"
-            )
+            st.download_button("🔁 Otomatik yedeği indir", data=f, file_name="kumas_backup.db")
