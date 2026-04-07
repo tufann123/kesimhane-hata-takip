@@ -33,6 +33,20 @@ CREATE TABLE IF NOT EXISTS kayitlar (
 """)
 conn.commit()
 
+# ---------------- DROPDOWN LİSTELER ----------------
+musteri_list = [
+    "Erlich", "Hugo Boss", "Tommy", "Ten Cate",
+    "Blackspade", "Lisca", "Groenendijk",
+    "Armedangels", "Vanilla Blush", "Falke", "Mey"
+]
+
+hata_kaynagi_list = ["GKK", "Tedarikçi", "Kumaş", "Kalıp"]
+
+ana_neden_list = [
+    "Gramaj", "Leke", "En Problemi", "Kola Kenarı",
+    "Kırık", "Abraj", "Renk Farkı"
+]
+
 # ---------------- MENU ----------------
 menu = st.sidebar.radio("Menü", ["Veri Girişi", "Dashboard", "Kayıtlar"])
 
@@ -44,22 +58,26 @@ if menu == "Veri Girişi":
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            hafta = st.text_input("Hafta")
-            tarih = st.date_input("Tarih", datetime.today())
+            tarih = st.date_input("Tarih")
+
+            # 🔥 OTOMATİK HAFTA
+            hafta = f"{tarih.isocalendar().week}. Hafta"
+            st.text_input("Hafta", value=hafta, disabled=True)
+
             tesis = st.text_input("Tesis Adı")
 
         with col2:
             bant = st.text_input("Bant No")
-            musteri = st.text_input("Müşteri")
+            musteri = st.selectbox("Müşteri", musteri_list)
             pastal_no = st.text_input("Pastal No")
 
         with col3:
             model_no = st.text_input("Model No")
             kumas_kalite = st.text_input("Kumaş Kalite / Varyant")
-            hata_kaynagi = st.selectbox("Hata Kaynağı", ["Kesim", "Kumaş", "Operatör", "Makine"])
+            hata_kaynagi = st.selectbox("Hata Kaynağı", hata_kaynagi_list)
 
         hata_adi = st.text_input("Hata Adı")
-        ana_neden = st.text_input("Ana Neden")
+        ana_neden = st.selectbox("Ana Neden", ana_neden_list)
 
         col4, col5, col6 = st.columns(3)
 
@@ -121,20 +139,19 @@ if menu == "Dashboard":
         kaynak = df.groupby("hata_kaynagi")["hata_kg"].sum()
         st.bar_chart(kaynak)
 
+        # Ana neden analizi
+        st.subheader("📊 Ana Neden Analizi")
+        neden = df.groupby("ana_neden")["hata_kg"].sum()
+        st.bar_chart(neden)
+
         # Müşteri bazlı
         st.subheader("👥 Müşteri Bazlı Hata")
         musteri = df.groupby("musteri")["hata_kg"].sum()
         st.bar_chart(musteri)
 
-        # En kötü model
-        st.subheader("⚠️ Model Analizi")
-        model = df.groupby("model_no")["hata_kg"].sum().sort_values(ascending=False)
-        st.bar_chart(model.head(10))
-
 # ---------------- KAYITLAR ----------------
 if menu == "Kayıtlar":
     st.title("📋 Kayıtlar")
-
     st.dataframe(df, use_container_width=True)
 
     def to_excel(df):
