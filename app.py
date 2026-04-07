@@ -14,37 +14,34 @@ DB_FILE = "kumas.db"
 BACKUP_FILE = "kumas_backup.db"
 
 # ---------------- DATABASE ----------------
-try:
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    c = conn.cursor()
+conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+c = conn.cursor()
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS kayitlar (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        hafta TEXT,
-        tarih TEXT,
-        tesis TEXT,
-        bant TEXT,
-        musteri TEXT,
-        pastal_no TEXT,
-        model_no TEXT,
-        kumas_kalite TEXT,
-        hata_kaynagi TEXT,
-        hata_adi TEXT,
-        ana_neden TEXT,
-        birim TEXT,
-        pastal_ihtiyac REAL,
-        cikan_top INTEGER,
-        hatali_top INTEGER,
-        cikan_kg REAL,
-        hata_kg REAL,
-        durum TEXT,
-        aksiyon TEXT
-    )
-    """)
-    conn.commit()
-except Exception as e:
-    st.error(f"DB Hata: {e}")
+c.execute("""
+CREATE TABLE IF NOT EXISTS kayitlar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hafta TEXT,
+    tarih TEXT,
+    tesis TEXT,
+    bant TEXT,
+    musteri TEXT,
+    pastal_no TEXT,
+    model_no TEXT,
+    kumas_kalite TEXT,
+    hata_kaynagi TEXT,
+    hata_adi TEXT,
+    ana_neden TEXT,
+    birim TEXT,
+    pastal_ihtiyac REAL,
+    cikan_top INTEGER,
+    hatali_top INTEGER,
+    cikan_kg REAL,
+    hata_kg REAL,
+    durum TEXT,
+    aksiyon TEXT
+)
+""")
+conn.commit()
 
 # ---------------- BACKUP ----------------
 def create_backup():
@@ -77,7 +74,6 @@ ana_neden_list = ["Gramaj","Leke","En Problemi","Kola Kenarı","Kırık","Abraj"
 birim_list = ["KG","MT"]
 durum_list = ["Açık","Devam Ediyor","Tamamlandı"]
 
-# ---------------- MENU ----------------
 menu = st.sidebar.radio("Menü", ["Veri Girişi", "Dashboard", "Kayıtlar", "Yedekleme", "Excel Yükle"])
 
 # ---------------- VERİ GİRİŞ ----------------
@@ -181,89 +177,57 @@ if menu == "Dashboard":
         except Exception as e:
             st.error(f"Dashboard hata: {e}")
 
-# ---------------- KAYITLAR ----------------
-if menu == "Kayıtlar":
-    st.title("📋 Kayıt Yönetimi")
-
-    if df.empty:
-        st.warning("Veri yok")
-    else:
-        try:
-            secilen_id = st.selectbox("Kayıt Seç", df["id"])
-            kayit = df[df["id"] == secilen_id].iloc[0]
-
-            with st.form("edit"):
-
-                musteri_index = musteri_list.index(kayit["musteri"]) if kayit["musteri"] in musteri_list else 0
-                musteri = st.selectbox("Müşteri", musteri_list, index=musteri_index)
-
-                hata_adi = st.text_input("Hata Adı", kayit["hata_adi"])
-                hata_kg = st.number_input("Hata KG", value=float(kayit["hata_kg"]))
-
-                durum_index = durum_list.index(kayit["durum"]) if kayit["durum"] in durum_list else 0
-                durum = st.selectbox("Durum", durum_list, index=durum_index)
-
-                aksiyon = st.text_area("Aksiyon", kayit["aksiyon"])
-
-                if st.form_submit_button("Güncelle"):
-                    c.execute("""
-                    UPDATE kayitlar
-                    SET musteri=?, hata_adi=?, hata_kg=?, durum=?, aksiyon=?
-                    WHERE id=?
-                    """, (musteri, hata_adi, hata_kg, durum, aksiyon, secilen_id))
-
-                    conn.commit()
-                    create_backup()
-                    st.success("✅ Güncellendi")
-
-            if st.button("🗑️ Sil"):
-                c.execute("DELETE FROM kayitlar WHERE id=?", (secilen_id,))
-                conn.commit()
-                create_backup()
-                st.warning("Silindi")
-
-        except Exception as e:
-            st.error(f"Kayıt ekranı hata: {e}")
-
 # ---------------- EXCEL YÜKLE ----------------
 if menu == "Excel Yükle":
-    st.title("📤 Excel Yükle")
+    st.title("📤 Excel'den Veri Yükle")
 
     uploaded_file = st.file_uploader("Excel yükle", type=["xlsx"])
 
     if uploaded_file:
         try:
             df_excel = pd.read_excel(uploaded_file)
+
+            # 🔥 kolon normalize
+            df_excel.columns = df_excel.columns.str.strip().str.lower()
+
+            st.write("Kolonlar:", df_excel.columns.tolist())
             st.dataframe(df_excel)
 
-            if st.button("Aktar"):
+            if st.button("🚀 Aktar"):
+                sayac = 0
+
                 for _, row in df_excel.iterrows():
-                    c.execute("""
-                    INSERT INTO kayitlar VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """, (
-                        str(row.get("hafta","")),
-                        str(row.get("tarih","")),
-                        str(row.get("tesis","İzmir")),
-                        str(row.get("bant","Kesimhane")),
-                        str(row.get("musteri","")),
-                        str(row.get("pastal_no","")),
-                        str(row.get("model_no","")),
-                        str(row.get("kumas_kalite","")),
-                        str(row.get("hata_kaynagi","")),
-                        str(row.get("hata_adi","")),
-                        str(row.get("ana_neden","")),
-                        str(row.get("birim","KG")),
-                        float(row.get("pastal_ihtiyac",0)),
-                        int(row.get("cikan_top",0)),
-                        int(row.get("hatali_top",0)),
-                        float(row.get("cikan_kg",0)),
-                        float(row.get("hata_kg",0)),
-                        str(row.get("durum","Açık")),
-                        str(row.get("aksiyon",""))
-                    ))
+                    try:
+                        c.execute("""
+                        INSERT INTO kayitlar VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        """, (
+                            str(row.get("hafta","")),
+                            str(row.get("tarih","")),
+                            str(row.get("tesis","İzmir")),
+                            str(row.get("bant","Kesimhane")),
+                            str(row.get("müşteri", row.get("musteri",""))),
+                            str(row.get("pastal_no","")),
+                            str(row.get("model_no","")),
+                            str(row.get("kumas_kalite","")),
+                            str(row.get("hata_kaynagi","")),
+                            str(row.get("hata_adi","")),
+                            str(row.get("ana_neden","")),
+                            str(row.get("birim","KG")),
+                            float(row.get("pastal_ihtiyac",0) or 0),
+                            int(row.get("cikan_top",0) or 0),
+                            int(row.get("hatali_top",0) or 0),
+                            float(row.get("cikan_kg",0) or 0),
+                            float(row.get("hata_kg",0) or 0),
+                            str(row.get("durum","Açık")),
+                            str(row.get("aksiyon",""))
+                        ))
+                        sayac += 1
+                    except:
+                        continue
+
                 conn.commit()
                 create_backup()
-                st.success("✅ Yüklendi")
+                st.success(f"✅ {sayac} kayıt yüklendi!")
 
         except Exception as e:
             st.error(f"Excel hata: {e}")
@@ -274,11 +238,11 @@ if menu == "Yedekleme":
 
     try:
         with open(DB_FILE, "rb") as f:
-            st.download_button("DB indir", f, file_name="kumas.db")
+            st.download_button("📦 DB indir", f, file_name="kumas.db")
     except:
         st.warning("DB yok")
 
-    uploaded = st.file_uploader("Yedek yükle", type=["db"])
+    uploaded = st.file_uploader("📤 Yedek yükle", type=["db"])
 
     if uploaded:
         restore_backup(uploaded)
