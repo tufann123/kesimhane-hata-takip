@@ -51,7 +51,6 @@ ana_neden_list = [
 ]
 
 birim_list = ["KG", "MT"]
-
 durum_list = ["Açık", "Devam Ediyor", "Tamamlandı"]
 
 # ---------------- MENU ----------------
@@ -86,7 +85,6 @@ if menu == "Veri Girişi":
 
         hata_adi = st.text_input("Hata Adı")
         ana_neden = st.selectbox("Ana Neden", ana_neden_list)
-
         birim = st.selectbox("Birim", birim_list)
 
         col4, col5, col6 = st.columns(3)
@@ -102,7 +100,6 @@ if menu == "Veri Girişi":
             cikan_kg = st.number_input("Çıkan Kumaş", min_value=0.0)
             hata_kg = st.number_input("Hata", min_value=0.0)
 
-        # 🔥 YENİ
         durum = st.selectbox("Durum", durum_list)
         aksiyon = st.text_area("Aksiyon / Alınan Önlem")
 
@@ -128,64 +125,86 @@ df = pd.read_sql("SELECT * FROM kayitlar", conn)
 
 # ---------------- DASHBOARD ----------------
 if menu == "Dashboard":
-    st.title("📊 Dashboard")
+    st.title("📊 Yönetim Dashboard")
 
     if df.empty:
         st.warning("Veri yok")
     else:
         df["tarih"] = pd.to_datetime(df["tarih"])
 
-        # 🔍 TARİH FİLTRE
+        # ----------- FILTER PANEL -----------
+        st.sidebar.subheader("🔍 Filtreler")
+
         min_date = df["tarih"].min()
         max_date = df["tarih"].max()
 
-        colf1, colf2 = st.columns(2)
-        start_date = colf1.date_input("Başlangıç Tarihi", min_date)
-        end_date = colf2.date_input("Bitiş Tarihi", max_date)
+        start_date = st.sidebar.date_input("Başlangıç", min_date)
+        end_date = st.sidebar.date_input("Bitiş", max_date)
+
+        secili_musteri = st.sidebar.multiselect("Müşteri", df["musteri"].unique())
+        secili_birim = st.sidebar.multiselect("Birim", df["birim"].unique())
 
         df = df[(df["tarih"] >= pd.to_datetime(start_date)) &
                 (df["tarih"] <= pd.to_datetime(end_date))]
 
-        col1, col2, col3 = st.columns(3)
+        if secili_musteri:
+            df = df[df["musteri"].isin(secili_musteri)]
 
+        if secili_birim:
+            df = df[df["birim"].isin(secili_birim)]
+
+        # ----------- KPI -----------
         toplam_hata = df["hata_kg"].sum()
         toplam_uretim = df["cikan_kg"].sum()
         hata_oran = toplam_hata / toplam_uretim if toplam_uretim > 0 else 0
 
-        col1.metric("Toplam Kayıt", len(df))
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Toplam Üretim", int(toplam_uretim))
         col2.metric("Toplam Hata", int(toplam_hata))
         col3.metric("Hata Oranı", f"%{round(hata_oran*100,2)}")
+        col4.metric("Açık Aksiyon", len(df[df["durum"] != "Tamamlandı"]))
 
-        # 🚨 KRİTİK ALARM
         if hata_oran > 0.05:
-            st.error("🚨 Kritik! Hata oranı %5 üstünde")
+            st.error("🚨 Kritik Seviye")
+        elif hata_oran > 0.03:
+            st.warning("⚠️ Orta Seviye")
         else:
-            st.success("✅ Hata oranı normal")
+            st.success("✅ İyi Seviye")
 
         st.divider()
 
-        # 📊 EN KÖTÜ MÜŞTERİ
-        st.subheader("⚠️ En Kötü Müşteri")
-        musteri = df.groupby("musteri")["hata_kg"].sum().sort_values(ascending=False)
-        st.bar_chart(musteri)
+        # ----------- GRID -----------
+        colA, colB = st.columns(2)
 
-        if not musteri.empty:
-            st.error(f"En problemli müşteri: {musteri.idxmax()}")
+        with colA:
+            st.subheader("📊 Müşteri")
+            st.bar_chart(df.groupby("musteri")["hata_kg"].sum())
 
-        # 📊 BİRİM ANALİZ
-        st.subheader("🧠 Birim Bazlı Analiz")
-        birim = df.groupby("birim")["hata_kg"].sum()
-        st.bar_chart(birim)
+            st.subheader("📊 Hata Kaynağı")
+            st.bar_chart(df.groupby("hata_kaynagi")["hata_kg"].sum())
 
-        # 📈 HAFTALIK PERFORMANS
-        st.subheader("📈 Haftalık Performans")
-        haftalik = df.groupby("hafta")["hata_kg"].sum()
-        st.line_chart(haftalik)
+        with colB:
+            st.subheader("📊 Ana Neden")
+            st.bar_chart(df.groupby("ana_neden")["hata_kg"].sum())
 
-        # 📌 AKSİYON DURUMU
-        st.subheader("📌 Aksiyon Takibi")
-        durum = df["durum"].value_counts()
-        st.bar_chart(durum)
+            st.subheader("📊 Birim")
+            st.bar_chart(df.groupby("birim")["hata_kg"].sum())
+
+        st.divider()
+
+        # ----------- TREND -----------
+        st.subheader("📈 Günlük Hata Oranı")
+        df["hata_oran"] = df["hata_kg"] / df["cikan_kg"]
+        st.line_chart(df.groupby("tarih")["hata_oran"].mean())
+
+        # ----------- EN KÖTÜ -----------
+        st.subheader("⚠️ Kritik Nokta")
+        en_kotu = df.groupby("musteri")["hata_kg"].sum().idxmax()
+        st.error(f"En problemli müşteri: {en_kotu}")
+
+        # ----------- TABLE -----------
+        st.subheader("📋 Detay Veri")
+        st.dataframe(df, use_container_width=True)
 
 # ---------------- KAYITLAR ----------------
 if menu == "Kayıtlar":
